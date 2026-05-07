@@ -1,19 +1,24 @@
+import io
 import json
 import os
+import re
 from pathlib import Path
 
 import boto3
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from pypdf import PdfReader
 
 load_dotenv()
 
 AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
 KB_ID      = os.getenv("BEDROCK_KB_ID", "")
 MODEL_ID   = os.getenv("BEDROCK_MODEL_ID", "")
+LAMBDA_URL = os.getenv("LAMBDA_URL", "")
 
 bedrock = boto3.client("bedrock-agent-runtime", region_name=AWS_REGION)
 
@@ -28,6 +33,8 @@ app.add_middleware(
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
+COURSE_PATTERN = re.compile(r"\b([A-Z]{2,4})\s+(\d{3})\b")
+
 
 @app.get("/health")
 def health():
@@ -41,8 +48,16 @@ def get_courses():
 
 
 @app.post("/upload-transcript")
-async def upload_transcript(file: UploadFile = File(...)):  # noqa: ARG001
-    return {"courses": []}
+async def upload_transcript(file: UploadFile = File(...)):
+    contents = await file.read()
+    try:
+        reader = PdfReader(io.BytesIO(contents))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        matches = COURSE_PATTERN.findall(text)
+        courses = sorted(set(f"{dept} {num}" for dept, num in matches))
+    except Exception:
+        courses = []
+    return {"courses": courses}
 
 
 SYSTEM_PROMPT = """\
@@ -92,8 +107,32 @@ class ChatRequest(BaseModel):
     completed_courses: list[str]
 
 
+def _parse_bedrock_raw(raw: str) -> dict:
+    raw = raw.strip()
+    if raw.startswith("```json"):
+        raw = raw[len("```json"):]
+    elif raw.startswith("```"):
+        raw = raw[len("```"):]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    return json.loads(raw.strip())
+
+
 @app.post("/chat")
 def chat(req: ChatRequest):
+    # ── Lambda path ───────────────────────────────────────────────────────────
+    if LAMBDA_URL:
+        try:
+            r = httpx.post(
+                LAMBDA_URL,
+                json={"message": req.message, "completed_courses": req.completed_courses},
+                timeout=30,
+            )
+            return JSONResponse(content=r.json())
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": str(e)})
+
+    # ── Bedrock fallback ──────────────────────────────────────────────────────
     prompt = SYSTEM_PROMPT.format(
         completed_courses=", ".join(req.completed_courses) or "none",
         message=req.message,
@@ -108,24 +147,15 @@ def chat(req: ChatRequest):
                     "knowledgeBaseId": KB_ID,
                     "modelArn": model_arn,
                     "generationConfiguration": {
-                        "promptTemplate": {
-                            "textPromptTemplate": prompt,
-                        },
+                        "promptTemplate": {"textPromptTemplate": prompt},
                     },
                 },
             },
         )
-        raw = response["output"]["text"].strip()
-        if raw.startswith("```json"):
-            raw = raw[len("```json"):]
-        elif raw.startswith("```"):
-            raw = raw[len("```"):]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
         try:
-            return JSONResponse(content=json.loads(raw))
+            return JSONResponse(content=_parse_bedrock_raw(response["output"]["text"]))
         except json.JSONDecodeError:
+            raw = response["output"]["text"]
             return JSONResponse(status_code=500, content={"error": "Failed to parse AI response", "raw": raw})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
