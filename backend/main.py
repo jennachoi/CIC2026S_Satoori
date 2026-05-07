@@ -94,11 +94,44 @@ class ChatRequest(BaseModel):
 
 @app.post("/chat")
 def chat(req: ChatRequest):
+    # Test response for local development (when AWS credentials are not available)
+    test_response = {
+        "message": "🎯 Great! AI/ML engineering is a fantastic path. Based on your goals and preference for hands-on learning, here are my top recommendations for next semester.",
+        "course_states": {
+            "CPSC 110": "completed",
+            "CPSC 221": "available",
+            "CPSC 330": "recommended",
+            "CPSC 340": "recommended",
+            "MATH 200": "available",
+        },
+        "recommended_courses": [
+            {
+                "code": "CPSC 330",
+                "reason": "Applied machine learning with practical Python projects - perfect for big tech interviews without heavy math."
+            },
+            {
+                "code": "CPSC 340",
+                "reason": "Machine learning fundamentals - the most sought-after course for ML engineer roles at tech companies."
+            },
+            {
+                "code": "CPSC 221",
+                "reason": "Data structures and algorithms - essential foundation for all ML systems and tech interviews."
+            }
+        ]
+    }
+
+    print(f"DEBUG: Using test response (AWS credentials not configured)")
+    return JSONResponse(content=test_response)
+
+    # Uncomment below to use real Bedrock API (requires AWS credentials)
+    """
+    print(f"DEBUG: KB_ID={KB_ID}, MODEL_ID={MODEL_ID}, AWS_REGION={AWS_REGION}")
     prompt = SYSTEM_PROMPT.format(
         completed_courses=", ".join(req.completed_courses) or "none",
         message=req.message,
     )
     model_arn = f"arn:aws:bedrock:{AWS_REGION}::foundation-model/{MODEL_ID}"
+    print(f"DEBUG: model_arn={model_arn}")
     try:
         response = bedrock.retrieve_and_generate(
             input={"text": req.message},
@@ -128,4 +161,8 @@ def chat(req: ChatRequest):
         except json.JSONDecodeError:
             return JSONResponse(status_code=500, content={"error": "Failed to parse AI response", "raw": raw})
     except Exception as e:
+        print(f"ERROR: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
+    """

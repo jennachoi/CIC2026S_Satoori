@@ -1,11 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ChatSidebar from './components/ChatSidebar'
 import CourseMap from './components/CourseMap'
 import DetailPanel from './components/DetailPanel'
+import { getCourses, type Course, type ChatResponse } from './api/courses'
 
 export default function App() {
   const [mapRevealed, setMapRevealed] = useState(false)
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
+  const [courses, setCourses] = useState<Record<string, Course> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [completedCourses, setCompletedCourses] = useState<string[]>([])
+  const [courseStates, setCourseStates] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    console.log('📥 Starting to fetch courses...')
+    getCourses()
+      .then(data => {
+        console.log('✅ Courses loaded:', Object.keys(data).length, 'courses')
+        setCourses(data)
+      })
+      .catch(err => {
+        console.error('❌ Failed to load courses:', err)
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
   return (
     <>
@@ -25,14 +43,21 @@ export default function App() {
       </header>
 
       <div className="app">
-        <ChatSidebar onRevealMap={() => setMapRevealed(true)} />
+        <ChatSidebar
+          onRevealMap={() => setMapRevealed(true)}
+          completedCourses={completedCourses}
+          onChatResponse={(response: ChatResponse) => {
+            setCompletedCourses(prev => [...prev, ...Object.keys(response.course_states)])
+            setCourseStates(response.course_states)
+          }}
+        />
         <main className="main">
           <div className="main-grid-bg" />
-          <CourseMap revealed={mapRevealed} onCourseClick={setSelectedCourse} />
+          {courses && <CourseMap revealed={mapRevealed} onCourseClick={setSelectedCourse} courses={courses} courseStates={courseStates} />}
         </main>
       </div>
 
-      <DetailPanel courseId={selectedCourse} onClose={() => setSelectedCourse(null)} />
+      {courses && <DetailPanel courseId={selectedCourse} onClose={() => setSelectedCourse(null)} courses={courses} />}
     </>
   )
 }

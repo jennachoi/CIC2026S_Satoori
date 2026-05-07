@@ -1,13 +1,17 @@
 import { useEffect, useRef } from 'react'
-import { courses, connections, nodePositions } from '../data/courses'
+import { connections, nodePositions } from '../data/courses'
+import { type Course } from '../api/courses'
 
 interface Props {
   revealed: boolean
   onCourseClick: (id: string) => void
+  courses: Record<string, Course & { status?: string; badge?: string }>
+  courseStates?: Record<string, string>
 }
 
-export default function CourseMap({ revealed, onCourseClick }: Props) {
+export default function CourseMap({ revealed, onCourseClick, courses, courseStates = {} }: Props) {
   const ghostSvgRef = useRef<SVGSVGElement>(null)
+  console.log('🗺️ CourseMap rendered, revealed:', revealed, 'courses count:', Object.keys(courses).length, 'courseStates:', courseStates)
 
   useEffect(() => {
     const drawGhostLines = () => {
@@ -138,16 +142,17 @@ export default function CourseMap({ revealed, onCourseClick }: Props) {
           {Object.entries(nodePositions).map(([id, [left, top]]) => {
             const course = courses[id]
             if (!course) return null
+            const status = courseStates[course.code] || 'locked'
             return (
               <div
                 key={id}
-                className={`course-node ${course.status}`}
+                className={`course-node ${status}`}
                 style={{ left, top }}
-                onClick={() => onCourseClick(id)}
+                onClick={() => onCourseClick(course.code)}
               >
                 <div className="node-code">{course.code}</div>
                 <div className="node-name">{course.name}</div>
-                <div className="node-badge">{course.badge}</div>
+                <div className="node-badge">{status === 'completed' ? '✓' : ''}</div>
               </div>
             )
           })}
