@@ -33,6 +33,8 @@ And get back:
 
 ### Initial architecture plan
 
+<br>
+
 ![Initial Architecture Plan](docs/architecture-plan.png)
 
 *This diagram represents our complete vision. For the hackathon, we successfully implemented the core AI flow (Lambda ➔ S3 ➔ Bedrock + KB). Please see the 'Future Scope' section below for details on pending integrations.*
@@ -68,12 +70,11 @@ Amazon Bedrock (Claude Sonnet 4.6) is the AI engine. The backend wires together 
 
 ```
 React (Vite + TypeScript)
-    └── FastAPI
-            └── API Gateway
-                    └── AWS Lambda
-                            ├── Amazon S3 (course data)
-                            ├── Bedrock Knowledge Base (syllabus RAG)
-                            └── Amazon Bedrock (Claude Sonnet 4.6)
+    └── API Gateway (Endpoint Management)
+            └── AWS Lambda (Orchestrator)
+                    ├── Amazon S3 (Course & Career Metadata)
+                    ├── Bedrock Knowledge Base (Syllabus RAG)
+                    └── Amazon Bedrock (Claude Sonnet 4.6)
 ```
 
 
